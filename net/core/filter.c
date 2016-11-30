@@ -1696,6 +1696,12 @@ static int __bpf_redirect_no_mac(struct sk_buff *skb, struct net_device *dev,
 static int __bpf_redirect_common(struct sk_buff *skb, struct net_device *dev,
 				 u32 flags)
 {
+	/* Verify that a link layer header is carried */
+	if (unlikely(skb->mac_header >= skb->network_header)) {
+		kfree_skb(skb);
+		return -ERANGE;
+	}
+
 	bpf_push_mac_rcsum(skb);
 	return flags & BPF_F_INGRESS ?
 	       __bpf_rx_skb(dev, skb) : __bpf_tx_skb(dev, skb);
@@ -2253,6 +2259,7 @@ bool bpf_helper_changes_skb_data(void *func)
 	    func == bpf_skb_vlan_pop ||
 	    func == bpf_skb_store_bytes ||
 	    func == bpf_skb_change_proto ||
+	    func == bpf_skb_change_head ||
 	    func == bpf_skb_change_tail ||
 	    func == bpf_skb_pull_data ||
 	    func == bpf_clone_redirect ||
@@ -2737,6 +2744,68 @@ cg_skb_func_proto(enum bpf_func_id func_id)
 	}
 }
 
+static const struct bpf_func_proto *
+lwt_inout_func_proto(enum bpf_func_id func_id)
+{
+	switch (func_id) {
+	case BPF_FUNC_skb_load_bytes:
+		return &bpf_skb_load_bytes_proto;
+	case BPF_FUNC_skb_pull_data:
+		return &bpf_skb_pull_data_proto;
+	case BPF_FUNC_csum_diff:
+		return &bpf_csum_diff_proto;
+	case BPF_FUNC_get_cgroup_classid:
+		return &bpf_get_cgroup_classid_proto;
+	case BPF_FUNC_get_route_realm:
+		return &bpf_get_route_realm_proto;
+	case BPF_FUNC_get_hash_recalc:
+		return &bpf_get_hash_recalc_proto;
+	case BPF_FUNC_perf_event_output:
+		return &bpf_skb_event_output_proto;
+	case BPF_FUNC_get_smp_processor_id:
+		return &bpf_get_smp_processor_id_proto;
+	case BPF_FUNC_skb_under_cgroup:
+		return &bpf_skb_under_cgroup_proto;
+	default:
+		return sk_filter_func_proto(func_id);
+	}
+}
+
+static const struct bpf_func_proto *
+lwt_xmit_func_proto(enum bpf_func_id func_id)
+{
+	switch (func_id) {
+	case BPF_FUNC_skb_get_tunnel_key:
+		return &bpf_skb_get_tunnel_key_proto;
+	case BPF_FUNC_skb_set_tunnel_key:
+		return bpf_get_skb_set_tunnel_proto(func_id);
+	case BPF_FUNC_skb_get_tunnel_opt:
+		return &bpf_skb_get_tunnel_opt_proto;
+	case BPF_FUNC_skb_set_tunnel_opt:
+		return bpf_get_skb_set_tunnel_proto(func_id);
+	case BPF_FUNC_redirect:
+		return &bpf_redirect_proto;
+	case BPF_FUNC_clone_redirect:
+		return &bpf_clone_redirect_proto;
+	case BPF_FUNC_skb_change_tail:
+		return &bpf_skb_change_tail_proto;
+	case BPF_FUNC_skb_change_head:
+		return &bpf_skb_change_head_proto;
+	case BPF_FUNC_skb_store_bytes:
+		return &bpf_skb_store_bytes_proto;
+	case BPF_FUNC_csum_update:
+		return &bpf_csum_update_proto;
+	case BPF_FUNC_l3_csum_replace:
+		return &bpf_l3_csum_replace_proto;
+	case BPF_FUNC_l4_csum_replace:
+		return &bpf_l4_csum_replace_proto;
+	case BPF_FUNC_set_hash_invalid:
+		return &bpf_set_hash_invalid_proto;
+	default:
+		return lwt_inout_func_proto(func_id);
+	}
+}
+
 static bool __is_valid_access(int off, int size, enum bpf_access_type type)
 {
 	if (off < 0 || off >= sizeof(struct __sk_buff))
@@ -2748,6 +2817,39 @@ static bool __is_valid_access(int off, int size, enum bpf_access_type type)
 		return false;
 
 	return true;
+}
+
+static bool lwt_is_valid_access(int off, int size,
+				enum bpf_access_type type,
+				enum bpf_reg_type *reg_type)
+{
+	switch (off) {
+	case offsetof(struct __sk_buff, tc_classid):
+		return false;
+	}
+
+	if (type == BPF_WRITE) {
+		switch (off) {
+		case offsetof(struct __sk_buff, mark):
+		case offsetof(struct __sk_buff, priority):
+		case offsetof(struct __sk_buff, cb[0]) ...
+		     offsetof(struct __sk_buff, cb[4]):
+			break;
+		default:
+			return false;
+		}
+	}
+
+	switch (off) {
+	case offsetof(struct __sk_buff, data):
+		*reg_type = PTR_TO_PACKET;
+		break;
+	case offsetof(struct __sk_buff, data_end):
+		*reg_type = PTR_TO_PACKET_END;
+		break;
+	}
+
+	return __is_valid_access(off, size, type);
 }
 
 static bool sk_filter_is_valid_access(int off, int size,
@@ -3105,6 +3207,19 @@ static const struct bpf_verifier_ops cg_skb_ops = {
 	.convert_ctx_access	= sk_filter_convert_ctx_access,
 };
 
+static const struct bpf_verifier_ops lwt_inout_ops = {
+	.get_func_proto		= lwt_inout_func_proto,
+	.is_valid_access	= lwt_is_valid_access,
+	.convert_ctx_access	= sk_filter_convert_ctx_access,
+};
+
+static const struct bpf_verifier_ops lwt_xmit_ops = {
+	.get_func_proto		= lwt_xmit_func_proto,
+	.is_valid_access	= lwt_is_valid_access,
+	.convert_ctx_access	= sk_filter_convert_ctx_access,
+	.gen_prologue		= tc_cls_act_prologue,
+};
+
 static struct bpf_prog_type_list sk_filter_type __read_mostly = {
 	.ops	= &sk_filter_ops,
 	.type	= BPF_PROG_TYPE_SOCKET_FILTER,
@@ -3130,6 +3245,21 @@ static struct bpf_prog_type_list cg_skb_type __read_mostly = {
 	.type	= BPF_PROG_TYPE_CGROUP_SKB,
 };
 
+static struct bpf_prog_type_list lwt_in_type __read_mostly = {
+	.ops	= &lwt_inout_ops,
+	.type	= BPF_PROG_TYPE_LWT_IN,
+};
+
+static struct bpf_prog_type_list lwt_out_type __read_mostly = {
+	.ops	= &lwt_inout_ops,
+	.type	= BPF_PROG_TYPE_LWT_OUT,
+};
+
+static struct bpf_prog_type_list lwt_xmit_type __read_mostly = {
+	.ops	= &lwt_xmit_ops,
+	.type	= BPF_PROG_TYPE_LWT_XMIT,
+};
+
 static int __init register_sk_filter_ops(void)
 {
 	bpf_register_prog_type(&sk_filter_type);
@@ -3137,6 +3267,9 @@ static int __init register_sk_filter_ops(void)
 	bpf_register_prog_type(&sched_act_type);
 	bpf_register_prog_type(&xdp_type);
 	bpf_register_prog_type(&cg_skb_type);
+	bpf_register_prog_type(&lwt_in_type);
+	bpf_register_prog_type(&lwt_out_type);
+	bpf_register_prog_type(&lwt_xmit_type);
 
 	return 0;
 }
