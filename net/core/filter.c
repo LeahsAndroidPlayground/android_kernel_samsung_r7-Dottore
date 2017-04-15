@@ -2346,12 +2346,7 @@ static u32 __bpf_skb_min_len(const struct sk_buff *skb)
 	return min_len;
 }
 
-static u32 __bpf_skb_max_len(const struct sk_buff *skb)
-{
-	if (skb_at_tc_ingress(skb) || !skb->dev)
-		return SKB_MAX_ALLOC;
-	return skb->dev->mtu + skb->dev->hard_header_len;
-}
+#define BPF_SKB_MAX_LEN SKB_MAX_ALLOC
 
 static int bpf_skb_grow_rcsum(struct sk_buff *skb, unsigned int new_len)
 {
@@ -2372,7 +2367,7 @@ static int bpf_skb_trim_rcsum(struct sk_buff *skb, unsigned int new_len)
 BPF_CALL_3(bpf_skb_change_tail, struct sk_buff *, skb, u32, new_len,
 	   u64, flags)
 {
-	u32 max_len = __bpf_skb_max_len(skb);
+	u32 max_len = BPF_SKB_MAX_LEN;
 	u32 min_len = __bpf_skb_min_len(skb);
 	int ret;
 
@@ -3169,14 +3164,7 @@ xdp_func_proto(enum bpf_func_id func_id)
 static const struct bpf_func_proto *
 cg_skb_func_proto(enum bpf_func_id func_id)
 {
-	switch (func_id) {
-	case BPF_FUNC_skb_load_bytes:
-		return &bpf_skb_load_bytes_proto;
-	case BPF_FUNC_skb_change_head:
-		return &bpf_skb_change_head_proto;
-	default:
-		return bpf_base_func_proto(func_id);
-	}
+	return sk_filter_func_proto(func_id);
 }
 
 static const struct bpf_func_proto *
