@@ -43,15 +43,21 @@ struct bpf_map {
 	u32 max_entries;
 	u32 map_flags;
 	u32 pages;
+	int numa_node;
 	bool unpriv_array;
 	struct user_struct *user;
 	const struct bpf_map_ops *ops;
 	struct work_struct work;
 	atomic_t usercnt;
-	struct bpf_map *inner_map_meta;
 #ifdef CONFIG_SECURITY
 	void *security;
 #endif
+};
+
+struct bpf_map_type_list {
+	struct list_head list_node;
+	const struct bpf_map_ops *ops;
+	enum bpf_map_type type;
 };
 
 /* function argument constraints */
@@ -160,10 +166,15 @@ struct bpf_verifier_ops {
 				enum bpf_reg_type *reg_type);
 	int (*gen_prologue)(struct bpf_insn *insn, bool direct_write,
 			    const struct bpf_prog *prog);
-	u32 (*convert_ctx_access)(enum bpf_access_type type,
-				  const struct bpf_insn *src,
-				  struct bpf_insn *dst,
-				  struct bpf_prog *prog);
+	u32 (*convert_ctx_access)(enum bpf_access_type type, int dst_reg,
+				  int src_reg, int ctx_off,
+				  struct bpf_insn *insn, struct bpf_prog *prog);
+};
+
+struct bpf_prog_type_list {
+	struct list_head list_node;
+	const struct bpf_verifier_ops *ops;
+	enum bpf_prog_type type;
 };
 
 struct bpf_prog_aux {
@@ -279,13 +290,8 @@ _out:							\
 #ifdef CONFIG_BPF_SYSCALL
 DECLARE_PER_CPU(int, bpf_prog_active);
 
-#define BPF_PROG_TYPE(_id, _ops) \
-	extern const struct bpf_verifier_ops _ops;
-#define BPF_MAP_TYPE(_id, _ops) \
-	extern const struct bpf_map_ops _ops;
-#include <linux/bpf_types.h>
-#undef BPF_PROG_TYPE
-#undef BPF_MAP_TYPE
+void bpf_register_prog_type(struct bpf_prog_type_list *tl);
+void bpf_register_map_type(struct bpf_map_type_list *tl);
 
 extern const struct file_operations bpf_map_fops;
 extern const struct file_operations bpf_prog_fops;
@@ -302,7 +308,7 @@ struct bpf_map * __must_check bpf_map_inc(struct bpf_map *map, bool uref);
 void bpf_map_put_with_uref(struct bpf_map *map);
 void bpf_map_put(struct bpf_map *map);
 int bpf_map_precharge_memlock(u32 pages);
-void *bpf_map_area_alloc(size_t size);
+void *bpf_map_area_alloc(size_t size, int numa_node);
 void bpf_map_area_free(void *base);
 
 extern int sysctl_unprivileged_bpf_disabled;
@@ -325,8 +331,6 @@ int bpf_stackmap_copy(struct bpf_map *map, void *key, void *value);
 int bpf_fd_array_map_update_elem(struct bpf_map *map, struct file *map_file,
 				 void *key, void *value, u64 map_flags);
 void bpf_fd_array_map_clear(struct bpf_map *map);
-int bpf_fd_htab_map_update_elem(struct bpf_map *map, struct file *map_file,
-				void *key, void *value, u64 map_flags);
 
 /* memcpy that is used with 8-byte aligned pointers, power-of-8 size and
  * forced to use 'long' read/writes to try to atomically copy long counters.
@@ -350,9 +354,20 @@ int bpf_check(struct bpf_prog **fp, union bpf_attr *attr);
 struct bpf_prog *bpf_prog_get_type_path(const char *name, enum bpf_prog_type type);
 
 #else
+static inline void bpf_register_prog_type(struct bpf_prog_type_list *tl)
+{
+}
+
 static inline struct bpf_prog *bpf_prog_get(u32 ufd)
 {
 	return ERR_PTR(-EOPNOTSUPP);
+}
+
+/* Return map's numa specified by userspace */
+static inline int bpf_map_attr_numa_node(const union bpf_attr *attr)
+{
+	return (attr->map_flags & BPF_F_NUMA_NODE) ?
+		attr->numa_node : NUMA_NO_NODE;
 }
 
 static inline struct bpf_prog *bpf_prog_get_type(u32 ufd,
