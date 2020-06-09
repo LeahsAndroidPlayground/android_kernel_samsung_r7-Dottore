@@ -95,7 +95,7 @@ EXPORT_SYMBOL_GPL(probe_kernel_write);
  * strncpy_from_unsafe_strict() is the same as strncpy_from_unsafe() except
  * for the case where architectures have non-overlapping user and kernel address
  * ranges: strncpy_from_unsafe_strict() will additionally return -EFAULT for
- * probing memory on a user address range where strncpy_from_unsafe_user() is
+ * probing memory on a user address range where strncpy_from_user_nofault() is
  * supposed to be used instead.
  */
 
