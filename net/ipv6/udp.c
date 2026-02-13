@@ -655,7 +655,7 @@ drop:
 static bool __udp_v6_is_mcast_sock(struct net *net, struct sock *sk,
 				   __be16 loc_port, const struct in6_addr *loc_addr,
 				   __be16 rmt_port, const struct in6_addr *rmt_addr,
-				    int dif , int sdif , unsigned short hnum)
+				   int dif, unsigned short hnum)
 {
 	struct inet_sock *inet = inet_sk(sk);
 
