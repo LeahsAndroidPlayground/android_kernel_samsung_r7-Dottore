@@ -94,7 +94,11 @@ static void ion_buffer_dump_tasks(struct ion_buffer *buffer, char *str)
 	size_t total_len = 0;
 	int count = 0;
 
+#ifdef CONFIG_ION_EXYNOS_STAT_LOG
 	list_for_each_entry_safe(task, tmp, &buffer->master_list, list) {
+#else
+	list_for_each_entry_safe(task, tmp, 0, list) {
+#endif
 		const char *name;
 		size_t len = strlen(dev_name(task->master));
 
@@ -111,7 +115,11 @@ static void ion_buffer_dump_tasks(struct ion_buffer *buffer, char *str)
 
 		strncat((char *)(str + total_len), name, len);
 		total_len += len;
+#ifdef CONFIG_ION_EXYNOS_STAT_LOG
 		if (!list_is_last(&task->list, &buffer->master_list))
+#else
+		if (!list_is_last(&task->list, 0))
+#endif
 			str[total_len++] = *delim;
 
 		if (++count > MAX_DUMP_TASKS)
