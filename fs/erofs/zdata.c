@@ -813,6 +813,9 @@ static void z_erofs_decompressqueue_endio(struct bio *bio)
 	struct bio_vec *bvec;
 	unsigned int i;
 
+	if (err)
+		pr_err("compressed read I/O error %d\n", err);
+
 	bio_for_each_segment_all(bvec, bio, i) {
 		struct page *page = bvec->bv_page;
 

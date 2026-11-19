@@ -209,6 +209,8 @@ static int z_erofs_lz4_decompress(struct z_erofs_decompress_req *rq, u8 *out)
 
 		if (inputmargin >= rq->inputsize) {
 			kunmap_atomic(headpage);
+			erofs_err(rq->sb, "zero-padded pcluster: margin %u >= inputsize %u",
+				  inputmargin, rq->inputsize);
 			return -EIO;
 		}
 	}
@@ -329,6 +331,8 @@ static int z_erofs_shifted_transform(const struct z_erofs_decompress_req *rq,
 	unsigned char *src, *dst;
 
 	if (nrpages_out > 2) {
+		erofs_err(rq->sb, "shifted (uncompressed) pcluster spans %u pages (pageofs_out %u, outputsize %u): unsupported by this driver",
+			  nrpages_out, rq->pageofs_out, rq->outputsize);
 		DBG_BUGON(1);
 		return -EIO;
 	}
