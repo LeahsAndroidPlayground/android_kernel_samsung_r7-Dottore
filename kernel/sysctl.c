@@ -232,7 +232,7 @@ void __weak unpriv_ebpf_notify(int new_state)
 {
 }
 
-static int __maybe_unused bpf_unpriv_handler(struct ctl_table *table, int write,
+static int bpf_unpriv_handler(struct ctl_table *table, int write,
                              void *buffer, size_t *lenp, loff_t *ppos)
 {
 	int ret, unpriv_enable = *(int *)table->data;
@@ -1366,10 +1366,10 @@ static struct ctl_table kern_table[] = {
 		.data		= &sysctl_unprivileged_bpf_disabled,
 		.maxlen		= sizeof(sysctl_unprivileged_bpf_disabled),
 		.mode		= 0644,
-		/* only handle a transition from default "0" to "1" */
-		.proc_handler	= proc_dointvec_minmax,
-		.extra1		= &one,
-		.extra2		= &one,
+		/* upstream 5.13+ semantics: 0, 1 (locked) or 2 */
+		.proc_handler	= bpf_unpriv_handler,
+		.extra1		= &zero,
+		.extra2		= &two,
 	},
 	{
 		.procname	= "bpf_stats_enabled",
