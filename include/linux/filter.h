@@ -636,9 +636,6 @@ static __always_inline u32 bpf_prog_run(const struct bpf_prog *prog,
 	return __bpf_prog_run(prog, ctx, bpf_dispatcher_nop_func);
 }
 
-/* Compatibility for older in-tree users of the pre-5.15 macro name */
-#define BPF_PROG_RUN(prog, ctx)	bpf_prog_run(prog, ctx)
-
 /*
  * Use in preemptible and therefore migratable context to make sure the
  * execution of the BPF program runs on one CPU.
@@ -656,6 +653,11 @@ static inline u32 bpf_prog_run_pin_on_cpu(const struct bpf_prog *prog,
 	preempt_enable();
 	return ret;
 }
+
+/* Compatibility for older in-tree users of the pre-5.15 macro name. They may
+ * run in preemptible context (e.g. seccomp), so pin like upstream does.
+ */
+#define BPF_PROG_RUN(prog, ctx)	bpf_prog_run_pin_on_cpu(prog, ctx)
 
 #define BPF_SKB_CB_LEN QDISC_CB_PRIV_LEN
 
