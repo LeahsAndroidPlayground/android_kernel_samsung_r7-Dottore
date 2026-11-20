@@ -114,12 +114,14 @@ EXPORT_SYMBOL_GPL(trace_call_bpf);
 BPF_CALL_3(bpf_probe_read_user, void *, dst, u32, size,
 	   const void __user *, unsafe_ptr)
 {
-	int ret = probe_user_read(dst, unsafe_ptr, size);
-
-	if (unlikely(ret < 0))
-		memset(dst, 0, size);
-
-	return ret;
+	//int ret = probe_user_read(dst, unsafe_ptr, size);
+	//
+	//if (unlikely(ret < 0))
+	//	memset(dst, 0, size);
+	//
+	//return ret;
+	pr_crit("%s: Stubbed out func reached!!!! Expect breakage!!!!!\n", __func__);
+	return -1;
 }
 
 const struct bpf_func_proto bpf_probe_read_user_proto = {
@@ -258,13 +260,16 @@ BPF_CALL_3(bpf_probe_write_user, void __user *, unsafe_ptr, const void *, src,
 	 * not provide enough validation, hence the check on KERNEL_DS.
 	 */
 
-	if (unlikely(in_interrupt() ||
-		     current->flags & (PF_KTHREAD | PF_EXITING)))
-		return -EPERM;
-	if (unlikely(segment_eq(get_fs(), KERNEL_DS)))
-		return -EPERM;
+	//if (unlikely(in_interrupt() ||
+	//	     current->flags & (PF_KTHREAD | PF_EXITING)))
+	//	return -EPERM;
+	//if (unlikely(segment_eq(get_fs(), KERNEL_DS)))
+	//	return -EPERM;
+	//
+	//return probe_user_write(unsafe_ptr, src, size);
 
-	return probe_user_write(unsafe_ptr, src, size);
+	pr_crit("%s: Stubbed out func reached!!!! Expect breakage!!!!!\n", __func__);
+	return -1;
 }
 
 static const struct bpf_func_proto bpf_probe_write_user_proto = {
