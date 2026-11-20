@@ -1,6 +1,6 @@
-# Current state 🟡
+# Current state 
 
-This project is temporarily paused due to a lack of testers. I've decided to stop publishing builds (for now) due to the fact that this project doesn't have any testers currently running stock oneui 5.1. This is not an EOL statement, stay tuned for the future.
+This project isnt paused im continuing development
 
 # About
 
@@ -12,7 +12,7 @@ This repository contains a community-supported kernel for the Galaxy Note 10 Lit
 
 Back up all previous modules (they will be permanently deleted once you install KernelSU-Next)
 
-Download the latest [boot.img](https://github.com/bavalucket/android_kernel_samsung_n770f/releases/)
+Download the latest [boot.img](https://github.com/ilovemykedi/android_kernel_samsung_n770f/releases/)
 
 Flash it through TWRP/Odin/heimdall/...
 
@@ -36,7 +36,7 @@ Enjoy!
 Clone the repo using the "--recurse-submodules" flag
 
 ```
-git clone --recurse-submodules https://github.com/bavalucket/android_kernel_samsung_n770f.git
+git clone --recurse-submodules https://github.com/ilovemykedi/android_kernel_samsung_n770f.git
 ```
 
 and then CD into the directory & run the automated 'build_kernel.sh'
@@ -88,3 +88,5 @@ If you want to request an additional feature or publish a Pull Request feel free
 - [Diamorphine](https://github.com/m0nad/Diamorphine): some rootkit skills.
 - [KernelSU](https://github.com/tiann/KernelSU): thanks to tiann, or else KernelSU Next wouldn't even exist.
 - [Magic Mount Port](https://github.com/5ec1cff/KernelSU/blob/main/userspace/ksud/src/magic_mount.rs): 💜 5ec1cff for saving KernelSU!
+- [ExyHyperBrick](https://github.com/ExyHyperBrick/android_kernel_samsung_exynos9810)for his bpf backports
+- [Claude](claude.ai)thanks to claude for doing almost all the work
