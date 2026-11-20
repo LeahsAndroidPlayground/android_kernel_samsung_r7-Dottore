@@ -32,16 +32,13 @@
 #include <crypto/rng.h>
 #include <crypto/drbg.h>
 #include <crypto/akcipher.h>
-#include <crypto/diskcipher.h>
 #include <crypto/kpp.h>
 
 #include "internal.h"
 
-#if 0
 static bool notests;
 module_param(notests, bool, 0644);
 MODULE_PARM_DESC(notests, "disable crypto self-tests");
-#endif
 
 #ifdef CONFIG_CRYPTO_MANAGER_DISABLE_TESTS
 
@@ -50,14 +47,6 @@ int alg_test(const char *driver, const char *alg, u32 type, u32 mask)
 {
 	return 0;
 }
-
-#ifdef CONFIG_CRYPTO_FIPS
-bool in_fips_err(void)
-{
-	return false;
-}
-EXPORT_SYMBOL_GPL(in_fips_err);
-#endif
 
 #else
 
@@ -85,12 +74,6 @@ EXPORT_SYMBOL_GPL(in_fips_err);
 */
 #define ENCRYPT 1
 #define DECRYPT 0
-
-#ifdef CONFIG_CRYPTO_FIPS
-#define FIPS_ERR 1
-#define FIPS_NO_ERR 0
-static int IN_FIPS_ERROR = FIPS_NO_ERR;
-#endif
 
 struct tcrypt_result {
 	struct completion completion;
@@ -162,88 +145,6 @@ struct alg_test_desc {
 };
 
 static unsigned int IDX[8] = { IDX1, IDX2, IDX3, IDX4, IDX5, IDX6, IDX7, IDX8 };
-
-#ifdef CONFIG_CRYPTO_FIPS
-bool in_fips_err(void)
-{
-	return (IN_FIPS_ERROR == FIPS_ERR);
-}
-EXPORT_SYMBOL_GPL(in_fips_err);
-
-void set_in_fips_err(void)
-{
-	IN_FIPS_ERROR = FIPS_ERR;
-}
-EXPORT_SYMBOL_GPL(set_in_fips_err);
-
-#ifdef CONFIG_CRYPTO_FIPS_FUNC_TEST
-static char *fips_functest_mode;
-
-static char *fips_functest_KAT_list[] = {
-	"ecb(aes-generic)",
-	"cbc(aes-generic)",
-	"gcm_base(ctr(aes-generic),ghash-generic)",
-	"ecb(aes-ce)",
-	"cbc(aes-ce)",
-	"gcm_base(ctr(aes-ce),ghash-generic)",
-	"sha1-generic",
-	"hmac(sha1-generic)",
-	"sha1-ce",
-	"hmac(sha1-ce)",
-	"sha224-generic",
-	"sha256-generic",
-	"hmac(sha224-generic)",
-	"hmac(sha256-generic)",
-	"sha224-ce",
-	"sha256-ce",
-	"hmac(sha224-ce)",
-	"hmac(sha256-ce)",
-	"sha384-generic",
-	"sha512-generic",
-	"hmac(sha384-generic)",
-	"hmac(sha512-generic)",
-	"drbg_nopr_hmac_sha256",
-	"drbg_pr_hmac_sha256",
-	"integrity"
-};
-static char *fips_functest_conditional_list[] = {
-	"ndrng_crngt",
-	"zeroization"
-};
-void reset_in_fips_err(void)
-{
-	IN_FIPS_ERROR = FIPS_NO_ERR;
-}
-EXPORT_SYMBOL_GPL(reset_in_fips_err);
-
-// This function is added to change fips_functest_KAT_num from tcrypt.c
-void set_fips_functest_KAT_mode(const int num)
-{
-	if (num >= 0 && num < SKC_FUNCTEST_KAT_CASE_NUM)
-		fips_functest_mode = fips_functest_KAT_list[num];
-	else
-		fips_functest_mode = SKC_FUNCTEST_NO_TEST;
-}
-EXPORT_SYMBOL_GPL(set_fips_functest_KAT_mode);
-void set_fips_functest_conditional_mode(const int num)
-{
-	if (num >= 0 && num < SKC_FUNCTEST_CONDITIONAL_CASE_NUM)
-		fips_functest_mode = fips_functest_conditional_list[num];
-	else
-		fips_functest_mode = SKC_FUNCTEST_NO_TEST;
-}
-EXPORT_SYMBOL_GPL(set_fips_functest_conditional_mode);
-char *get_fips_functest_mode(void)
-{
-	if (fips_functest_mode)
-		return fips_functest_mode;
-	else
-		return SKC_FUNCTEST_NO_TEST;
-}
-EXPORT_SYMBOL_GPL(get_fips_functest_mode);
-
-#endif // CONFIG_CRYPTO_FIPS_FUNC_TEST
-#endif
 
 static void hexdump(unsigned char *buf, unsigned int len)
 {
@@ -458,44 +359,14 @@ static int __test_hash(struct crypto_ahash *tfm, struct hash_testvec *template,
 			}
 		}
 
-// Pass wrong digest for functional tests
-// Test case : hmac(sha1), sha1
-#ifdef CONFIG_CRYPTO_FIPS_FUNC_TEST
-		if (!strcmp(algo, get_fips_functest_mode())) {
-			unsigned char func_buf[1024];
-
-			strcpy(func_buf, template[i].digest);
-			func_buf[0] += 1;
-			set_fips_functest_KAT_mode(0);
-
-			if (memcmp(result, func_buf,
-				crypto_ahash_digestsize(tfm))) {
-				pr_err("alg: hash: Test %d failed for %s\n",
-				       j, algo);
-				hexdump(result, crypto_ahash_digestsize(tfm));
-				ret = -EINVAL;
-				goto out;
-			}
-		} else {
-			if (memcmp(result, template[i].digest,
-				   crypto_ahash_digestsize(tfm))) {
-				pr_err("alg: hash: Test %d failed for %s\n",
-				       j, algo);
-				hexdump(result, crypto_ahash_digestsize(tfm));
-				ret = -EINVAL;
-				goto out;
-			}
+		if (memcmp(result, template[i].digest,
+			   crypto_ahash_digestsize(tfm))) {
+			printk(KERN_ERR "alg: hash: Test %d failed for %s\n",
+			       j, algo);
+			hexdump(result, crypto_ahash_digestsize(tfm));
+			ret = -EINVAL;
+			goto out;
 		}
-#else
-			if (memcmp(result, template[i].digest,
-				crypto_ahash_digestsize(tfm))) {
-				pr_err("alg: hash: Test %d failed for %s\n",
-				       j, algo);
-				hexdump(result, crypto_ahash_digestsize(tfm));
-				ret = -EINVAL;
-				goto out;
-			}
-#endif
 	}
 
 	j = 0;
@@ -794,23 +665,7 @@ static int __test_aead(struct crypto_aead *tfm, int enc,
 			ret = -EINVAL;
 			goto out;
 		}
-
-// Pass wrong key for functional tests
-// Test case : gcm(aes)
-#ifdef CONFIG_CRYPTO_FIPS_FUNC_TEST
-		if (!strcmp(algo, get_fips_functest_mode())) {
-			unsigned char func_buf[1024];
-
-			strcpy(func_buf, template[i].key);
-			func_buf[0] += 1;
-			memcpy(key, func_buf, template[i].klen);
-			set_fips_functest_KAT_mode(0);
-		} else {
-			memcpy(key, template[i].key, template[i].klen);
-		}
-#else
 		memcpy(key, template[i].key, template[i].klen);
-#endif
 
 		ret = crypto_aead_setkey(tfm, key, template[i].klen);
 		if (template[i].fail == !ret) {
@@ -1285,23 +1140,8 @@ static int __test_skcipher(struct crypto_skcipher *tfm, int enc,
 			crypto_skcipher_set_flags(tfm,
 						  CRYPTO_TFM_REQ_WEAK_KEY);
 
-// Pass wrong key for functional tests
-// Test case : ecb(aes)
-#ifdef CONFIG_CRYPTO_FIPS_FUNC_TEST
-		if (!strcmp(algo, get_fips_functest_mode())) {
-			unsigned char func_buf[1024];
-
-			strcpy(func_buf, template[i].key);
-			func_buf[0] += 1;
-			ret = crypto_skcipher_setkey(tfm, func_buf, template[i].klen);
-			set_fips_functest_KAT_mode(0);
-		} else {
-			ret = crypto_skcipher_setkey(tfm, template[i].key, template[i].klen);
-		}
-#else
 		ret = crypto_skcipher_setkey(tfm, template[i].key,
 					     template[i].klen);
-#endif
 		if (template[i].fail == !ret) {
 			pr_err("alg: skcipher%s: setkey failed on test %d for %s: flags=%x\n",
 			       d, j, algo, crypto_skcipher_get_flags(tfm));
@@ -1526,19 +1366,30 @@ static int test_comp(struct crypto_comp *tfm, struct comp_testvec *ctemplate,
 		     struct comp_testvec *dtemplate, int ctcount, int dtcount)
 {
 	const char *algo = crypto_tfm_alg_driver_name(crypto_comp_tfm(tfm));
+	char *output, *decomp_output;
 	unsigned int i;
-	char result[COMP_BUF_SIZE];
 	int ret;
+
+	output = kmalloc(COMP_BUF_SIZE, GFP_KERNEL);
+	if (!output)
+		return -ENOMEM;
+
+	decomp_output = kmalloc(COMP_BUF_SIZE, GFP_KERNEL);
+	if (!decomp_output) {
+		kfree(output);
+		return -ENOMEM;
+	}
 
 	for (i = 0; i < ctcount; i++) {
 		int ilen;
 		unsigned int dlen = COMP_BUF_SIZE;
 
-		memset(result, 0, sizeof (result));
+		memset(output, 0, COMP_BUF_SIZE);
+		memset(decomp_output, 0, COMP_BUF_SIZE);
 
 		ilen = ctemplate[i].inlen;
 		ret = crypto_comp_compress(tfm, ctemplate[i].input,
-		                           ilen, result, &dlen);
+					   ilen, output, &dlen);
 		if (ret) {
 			printk(KERN_ERR "alg: comp: compression failed "
 			       "on test %d for %s: ret=%d\n", i + 1, algo,
@@ -1546,7 +1397,17 @@ static int test_comp(struct crypto_comp *tfm, struct comp_testvec *ctemplate,
 			goto out;
 		}
 
-		if (dlen != ctemplate[i].outlen) {
+		ilen = dlen;
+		dlen = COMP_BUF_SIZE;
+		ret = crypto_comp_decompress(tfm, output,
+					     ilen, decomp_output, &dlen);
+		if (ret) {
+			pr_err("alg: comp: compression failed: decompress: on test %d for %s failed: ret=%d\n",
+			       i + 1, algo, -ret);
+			goto out;
+		}
+
+		if (dlen != ctemplate[i].inlen) {
 			printk(KERN_ERR "alg: comp: Compression test %d "
 			       "failed for %s: output len = %d\n", i + 1, algo,
 			       dlen);
@@ -1554,10 +1415,11 @@ static int test_comp(struct crypto_comp *tfm, struct comp_testvec *ctemplate,
 			goto out;
 		}
 
-		if (memcmp(result, ctemplate[i].output, dlen)) {
-			printk(KERN_ERR "alg: comp: Compression test %d "
-			       "failed for %s\n", i + 1, algo);
-			hexdump(result, dlen);
+		if (memcmp(decomp_output, ctemplate[i].input,
+			   ctemplate[i].inlen)) {
+			pr_err("alg: comp: compression failed: output differs: on test %d for %s\n",
+			       i + 1, algo);
+			hexdump(decomp_output, dlen);
 			ret = -EINVAL;
 			goto out;
 		}
@@ -1567,11 +1429,11 @@ static int test_comp(struct crypto_comp *tfm, struct comp_testvec *ctemplate,
 		int ilen;
 		unsigned int dlen = COMP_BUF_SIZE;
 
-		memset(result, 0, sizeof (result));
+		memset(decomp_output, 0, COMP_BUF_SIZE);
 
 		ilen = dtemplate[i].inlen;
 		ret = crypto_comp_decompress(tfm, dtemplate[i].input,
-		                             ilen, result, &dlen);
+					     ilen, decomp_output, &dlen);
 		if (ret) {
 			printk(KERN_ERR "alg: comp: decompression failed "
 			       "on test %d for %s: ret=%d\n", i + 1, algo,
@@ -1587,10 +1449,10 @@ static int test_comp(struct crypto_comp *tfm, struct comp_testvec *ctemplate,
 			goto out;
 		}
 
-		if (memcmp(result, dtemplate[i].output, dlen)) {
+		if (memcmp(decomp_output, dtemplate[i].output, dlen)) {
 			printk(KERN_ERR "alg: comp: Decompression test %d "
 			       "failed for %s\n", i + 1, algo);
-			hexdump(result, dlen);
+			hexdump(decomp_output, dlen);
 			ret = -EINVAL;
 			goto out;
 		}
@@ -1599,6 +1461,8 @@ static int test_comp(struct crypto_comp *tfm, struct comp_testvec *ctemplate,
 	ret = 0;
 
 out:
+	kfree(decomp_output);
+	kfree(output);
 	return ret;
 }
 
@@ -1662,146 +1526,6 @@ out:
 	kfree(seed);
 	return err;
 }
-
-#if defined(CONFIG_CRYPTO_DISKCIPHER) && !defined(CONFIG_EXYNOS_FMP_FIPS)
-static int __test_diskcipher(struct crypto_diskcipher *tfm, int enc,
-			const struct cipher_testvec *template,
-			unsigned int tcount, const int align_offset)
-{
-	const char *algo =
-		crypto_tfm_alg_driver_name(crypto_diskcipher_tfm(tfm));
-	unsigned int i, j;
-	char *q;
-	struct scatterlist sg[8];
-	struct scatterlist sgout[8];
-	const char *e = (enc == ENCRYPT) ? "encryption" : "decryption";
-	void *data;
-	char iv[MAX_IVLEN];
-	char *xbuf[XBUFSIZE];
-	char *xoutbuf[XBUFSIZE];
-	int ret = -ENOMEM;
-	unsigned int ivsize = crypto_diskcipher_ivsize(tfm);
-	struct diskcipher_test_request req;
-	const char *input, *result;
-
-	if (testmgr_alloc_buf(xbuf))
-		goto out_nobuf;
-
-	if (testmgr_alloc_buf(xoutbuf))
-		goto out_nooutbuf;
-
-	j = 0;
-	for (i = 0; i < tcount; i++) {
-		if (template[i].np && !template[i].also_non_np)
-			continue;
-
-		if (template[i].fips_skip)
-			continue;
-
-		if (template[i].iv)
-			memcpy(iv, template[i].iv, ivsize);
-		else
-			memset(iv, 0, MAX_IVLEN);
-
-		input  = enc ? template[i].ptext : template[i].ctext;
-		result = enc ? template[i].ctext : template[i].ptext;
-		j++;
-		ret = -EINVAL;
-		if (WARN_ON(align_offset + template[i].len > PAGE_SIZE))
-			goto out;
-
-		ret = crypto_diskcipher_setkey(tfm, template[i].key,
-					     template[i].klen, 0, NULL);
-		if (ret == -ENOKEY) {
-			pr_err("alg: diskcipher: no support %d keylen for %s. skip it\n",
-			       template[i].klen, algo);
-			continue;
-		} else if (ret) {
-			pr_err("alg: diskcipher: setkey failed on test %d for %s\n",
-				   j, algo);
-			goto out;
-		}
-
-		data = xbuf[0];
-		data += align_offset;
-		memcpy(data, input, template[i].len);
-		sg_init_one(&sg[0], data, template[i].len);
-
-		data = xoutbuf[0];
-		data += align_offset;
-		sg_init_one(&sgout[0], data, template[i].len);
-
-		diskcipher_request_set_crypt(&req, sg, sgout,
-				template[i].len, iv, enc ? 1 : 0);
-		ret = diskcipher_do_crypt(tfm, &req);
-		if (ret) {
-			pr_err("alg: diskcipher: %s failed on test %d for %s: ret=%d\n",
-				   e, j, algo, -ret);
-			goto out;
-		}
-
-		q = data;
-		if (memcmp(q, result, template[i].len)) {
-			pr_err("alg: diskcipher: Test %d failed (invalid result) on %s for %s\n",
-			       j, e, algo);
-			hexdump(q, template[i].len);
-			ret = -EINVAL;
-			goto out;
-		}
-	}
-	ret = 0;
-
-out:
-	testmgr_free_buf(xoutbuf);
-out_nooutbuf:
-	testmgr_free_buf(xbuf);
-out_nobuf:
-	return ret;
-}
-
-static int test_diskcipher(struct crypto_diskcipher *tfm, int enc,
-			 const struct cipher_testvec *template,
-			 unsigned int tcount)
-{
-	int ret;
-
-	ret = __test_diskcipher(tfm, enc, template, tcount, 0);
-	if (ret)
-		return ret;
-
-	/* test unaligned buffers, check with one byte offset */
-	ret = __test_diskcipher(tfm, enc, template, tcount, 1);
-	if (ret)
-		return ret;
-
-	return 0;
-}
-
-static int alg_test_diskcipher(const struct alg_test_desc *desc,
-			     const char *driver, u32 type, u32 mask)
-{
-	struct crypto_diskcipher *tfm;
-	const struct cipher_test_suite *suite = &desc->suite.cipher;
-	int err = 0;
-
-	tfm = crypto_alloc_diskcipher(driver, type | CRYPTO_ALG_INTERNAL,
-					mask, 0);
-	if (!tfm || IS_ERR(tfm)) {
-		pr_err("alg: diskcipher: Failed to load transform for %s: %ld\n",
-			driver, PTR_ERR(tfm));
-		return PTR_ERR(tfm);
-	}
-
-	err = test_diskcipher(tfm, ENCRYPT, suite->vecs, suite->count);
-	if (err)
-		goto out;
-
-	err = test_diskcipher(tfm, DECRYPT, suite->vecs, suite->count);
-out:
-	crypto_free_diskcipher(tfm);
-	return err;
-}
-#endif
 
 static int alg_test_aead(const struct alg_test_desc *desc, const char *driver,
 			 u32 type, u32 mask)
@@ -2062,22 +1786,7 @@ static int drbg_cavs_test(struct drbg_testvec *test, int pr,
 		goto outbuf;
 	}
 
-// Pass wrong entropy for functional tests
-// Test case : drbg
-#ifdef CONFIG_CRYPTO_FIPS_FUNC_TEST
-	if (!strcmp(driver, get_fips_functest_mode())) {
-		unsigned char func_buf[1024];
-
-		strcpy(func_buf, test->expected);
-		func_buf[0] += 1;
-		set_fips_functest_KAT_mode(0);
-		ret = memcmp(func_buf, buf, test->expectedlen);
-	} else {
-		ret = memcmp(test->expected, buf, test->expectedlen);
-	}
-#else
 	ret = memcmp(test->expected, buf, test->expectedlen);
-#endif
 
 outbuf:
 	crypto_free_rng(drng);
@@ -2400,12 +2109,6 @@ static int alg_test_akcipher(const struct alg_test_desc *desc,
 static int alg_test_null(const struct alg_test_desc *desc,
 			     const char *driver, u32 type, u32 mask)
 {
-#ifdef CONFIG_CRYPTO_FIPS
-	if (desc && desc->fips_allowed) {
-		if (unlikely(in_fips_err()))
-			return -1;
-	}
-#endif
 	return 0;
 }
 
@@ -2727,6 +2430,7 @@ static const struct alg_test_desc alg_test_descs[] = {
 		.fips_allowed = 1,
 	}, {
 		.alg = "authenc(hmac(sha512),cbc(aes))",
+		.fips_allowed = 1,
 		.test = alg_test_aead,
 		.suite = {
 			.aead = {
@@ -2754,6 +2458,7 @@ static const struct alg_test_desc alg_test_descs[] = {
 	}, {
 		.alg = "authenc(hmac(sha512),cbc(des3_ede))",
 		.test = alg_test_aead,
+		.fips_allowed = 1,
 		.suite = {
 			.aead = {
 				.enc = {
@@ -2764,6 +2469,14 @@ static const struct alg_test_desc alg_test_descs[] = {
 				}
 			}
 		}
+	}, {
+		.alg = "authenc(hmac(sha512),ctr(aes))",
+		.test = alg_test_null,
+		.fips_allowed = 1,
+	}, {
+		.alg = "authenc(hmac(sha512),rfc3686(ctr(aes)))",
+		.test = alg_test_null,
+		.fips_allowed = 1,
 	}, {
 		.alg = "cbc(aes)",
 		.test = alg_test_skcipher,
@@ -4361,14 +4074,6 @@ static const struct alg_test_desc alg_test_descs[] = {
 				},
 			}
 		},
-#if defined(CONFIG_CRYPTO_DISKCIPHER) && !defined(CONFIG_EXYNOS_FMP_FIPS)
-	}, {
-		.alg = "cbc(aes)-disk",
-		.test = alg_test_diskcipher,
-		.suite = {
-			.cipher = __VECS(aes_cbc_tv_template)
-		}
-#endif
 	}, {
 		.alg = "xchacha20",
 		.test = alg_test_skcipher,
@@ -4460,14 +4165,6 @@ static const struct alg_test_desc alg_test_descs[] = {
 				}
 			}
 		}
-#if defined(CONFIG_CRYPTO_DISKCIPHER) && !defined(CONFIG_EXYNOS_FMP_FIPS)
-	}, {
-		.alg = "xts(aes)-disk",
-		.test = alg_test_diskcipher,
-		.suite = {
-			.cipher = __VECS(aes_xts_tv_template)
-		}
-#endif
 	}, {
 		.alg = "zstd",
 		.test = alg_test_comp,
@@ -4547,12 +4244,10 @@ int alg_test(const char *driver, const char *alg, u32 type, u32 mask)
 	int j;
 	int rc;
 
-#if 0
 	if (!fips_enabled && notests) {
 		printk_once(KERN_INFO "alg: self-tests disabled\n");
 		return 0;
 	}
-#endif
 
 	alg_test_descs_check_order();
 
@@ -4592,45 +4287,20 @@ int alg_test(const char *driver, const char *alg, u32 type, u32 mask)
 					     type, mask);
 
 test_done:
-	if (fips_enabled && rc) {
-		pr_err("FIPS : %s: %s alg self test failed\n",
-			driver, alg);
-#ifdef CONFIG_CRYPTO_FIPS
-#ifdef CONFIG_CRYPTO_FIPS_FUNC_TEST
-		if (!strcmp("", get_fips_functest_mode()))
-			IN_FIPS_ERROR = FIPS_ERR;
-#else
-		IN_FIPS_ERROR = FIPS_ERR;
-#endif // CONFIG_CRYPTO_FIPS_FUNC_TEST
-#else
+	if (fips_enabled && rc)
 		panic("%s: %s alg self test failed in fips mode!\n", driver, alg);
-#endif //CONFIG_CRYPTO_FIPS
-
-		return rc;
-	}
 
 	if (fips_enabled && !rc)
-		pr_info("FIPS : self-tests for %s (%s) passed\n", driver, alg);
+		pr_info("alg: self-tests for %s (%s) passed\n", driver, alg);
 
 	return rc;
 
 notest:
-	pr_info("FIPS : No test for %s (%s)\n", alg, driver);
+	printk(KERN_INFO "alg: No test for %s (%s)\n", alg, driver);
 	return 0;
 non_fips_alg:
 	return -EINVAL;
 }
-
-int testmgr_crypto_proc_init(void)
-{
-#ifdef CONFIG_CRYPTO_FIPS
-	crypto_init_proc(&IN_FIPS_ERROR);
-#else
-	crypto_init_proc();
-#endif
-	return 0;
-}
-EXPORT_SYMBOL_GPL(testmgr_crypto_proc_init);
 
 #endif /* CONFIG_CRYPTO_MANAGER_DISABLE_TESTS */
 
